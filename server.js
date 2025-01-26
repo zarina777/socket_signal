@@ -7,7 +7,12 @@ const cors = require("cors");
 const app = express();
 
 app.use(express.json());
-app.use(cors());
+app.use(
+  cors({
+    origin: "*",
+    methods: ["GET", "POST"],
+  })
+);
 
 // Socket.io setup
 const server = require("http").createServer(app); // Attach HTTP server to app
