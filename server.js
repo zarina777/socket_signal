@@ -54,10 +54,11 @@ io.on("connection", (socket) => {
     }
   });
 
-  // socket.on("endCall", ({ to, from }) => {
-  //   let targetUser = connectedUsers.get(to);
-  //   socket.to(targetUser).emit("endCall", "Call ended by " + from);
-  // });
+  socket.on("endCall", ({ to, from }) => {
+    // console.log("calLEnd received. from = ", from, "to = ", to);
+    let targetUser = connectedUsers.get(to);
+    socket.to(targetUser).emit("endCall", "Call ended by " + from);
+  });
   // Handle user disconnection
   socket.on("disconnect", () => {
     for (const [userId, socketId] of connectedUsers.entries()) {
