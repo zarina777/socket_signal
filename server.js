@@ -26,23 +26,25 @@ const io = require("socket.io")(server, {
 const connectedUsers = new Map();
 // Handle Socket.IO connections
 io.on("connection", (socket) => {
-  // Authenticate user and map their `_id` to their socket
+  // Authenticate user and map their _id to their socket
   socket.on("authenticate", (userId) => {
+    // No JWT verification, just map the user ID to their socket
     connectedUsers.set(userId, socket.id);
     console.log(`User authenticated: ${userId}`);
   });
 
-  // CallUser
+  // Handle incoming call requests
   socket.on("callUser", ({ userToCall, signal, from, name }) => {
     let targetUser = connectedUsers.get(userToCall);
     if (targetUser) {
-      io.to(targetUser).emit("callUser", { signal: signal, from, name });
+      io.to(targetUser).emit("callUser", { signal, name, from });
       socket.emit("UserIsOnline", "User is online, Wait for response...");
     } else {
       socket.emit("UserNotOnline", "User is not online");
     }
   });
 
+  // Handle response to incoming call
   socket.on("answerToCall", (data) => {
     let targetUser = connectedUsers.get(data.to);
     if (targetUser) {
@@ -52,11 +54,17 @@ io.on("connection", (socket) => {
     }
   });
 
+  // socket.on("endCall", ({ to, from }) => {
+  //   let targetUser = connectedUsers.get(to);
+  //   socket.to(targetUser).emit("endCall", "Call ended by " + from);
+  // });
+  // Handle user disconnection
   socket.on("disconnect", () => {
     for (const [userId, socketId] of connectedUsers.entries()) {
       if (socketId === socket.id) {
         connectedUsers.delete(userId);
         console.log(`User disconnected: ${userId}`);
+        io.emit("userOffline", userId);
         break;
       }
     }
