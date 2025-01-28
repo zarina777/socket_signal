@@ -24,12 +24,12 @@ const io = require("socket.io")(server, {
 });
 
 const connectedUsers = new Map();
+
 // Handle Socket.IO connections
 io.on("connection", (socket) => {
   // Authenticate user and map their _id to their socket
   socket.on("authenticate", (userId) => {
-    // No JWT verification, just map the user ID to their socket
-    connectedUsers.set(userId, socket.id);
+    connectedUsers.set(userId, { currentID: socket.id, busy: false });
     console.log(`User authenticated: ${userId}`);
   });
 
@@ -37,8 +37,12 @@ io.on("connection", (socket) => {
   socket.on("callUser", ({ userToCall, signal, from, name }) => {
     let targetUser = connectedUsers.get(userToCall);
     if (targetUser) {
-      io.to(targetUser).emit("callUser", { signal, name, from });
-      socket.emit("UserIsOnline", "User is online, Wait for response...");
+      if (targetUser.busy) {
+        socket.emit("busyUser", "User is currently busy");
+        return;
+      }
+      io.to(targetUser.currentID).emit("callUser", { signal, name, from, userToCall });
+      socket.emit("UserIsOnline", "Wait for response...");
     } else {
       socket.emit("UserNotOnline", "User is not online");
     }
@@ -47,22 +51,37 @@ io.on("connection", (socket) => {
   // Handle response to incoming call
   socket.on("answerToCall", (data) => {
     let targetUser = connectedUsers.get(data.to);
-    if (targetUser) {
-      io.to(targetUser).emit("callAccepted", data.signal); // Send the accepted signal to the caller
+    let callingUser = connectedUsers.get(data.from);
+
+    if (targetUser && callingUser) {
+      io.to(targetUser.currentID).emit("callAccepted", data.signal);
+
+      // Update busy status for both users
+      connectedUsers.set(data.to, { ...targetUser, busy: true });
+      connectedUsers.set(data.from, { ...callingUser, busy: true });
     } else {
-      console.log(`User ${data.to} is not connected`);
+      console.log(`User ${data.to} or ${data.from} is not connected`);
     }
   });
 
+  // Handle ending the call
   socket.on("endCall", ({ to, from }) => {
-    // console.log("calLEnd received. from = ", from, "to = ", to);
+    console.log(to);
     let targetUser = connectedUsers.get(to);
-    socket.to(targetUser).emit("endCall", "Call ended by " + from);
+    let callingUser = connectedUsers.get(from);
+    console.log(`User ${to} - ${from}`);
+    if (targetUser && callingUser) {
+      io.to(targetUser.currentID).emit("endCall", { from, to });
+      connectedUsers.set(to, { ...targetUser, busy: false });
+      connectedUsers.set(from, { ...callingUser, busy: false });
+    }
+    // Update busy status for both users
   });
+
   // Handle user disconnection
   socket.on("disconnect", () => {
-    for (const [userId, socketId] of connectedUsers.entries()) {
-      if (socketId === socket.id) {
+    for (const [userId, userInfo] of connectedUsers.entries()) {
+      if (userInfo.currentID === socket.id) {
         connectedUsers.delete(userId);
         console.log(`User disconnected: ${userId}`);
         io.emit("userOffline", userId);
@@ -71,7 +90,6 @@ io.on("connection", (socket) => {
     }
   });
 });
-
 // API routes
 app.use("/users", userRoute);
 
