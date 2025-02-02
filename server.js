@@ -36,15 +36,24 @@ io.on("connection", (socket) => {
   // Handle incoming call requests
   socket.on("callUser", ({ userToCall, signal, from, name }) => {
     let targetUser = connectedUsers.get(userToCall);
+    let currentUser = connectedUsers.get(from);
     if (targetUser) {
       if (targetUser.busy) {
         socket.emit("busyUser", "User is currently busy");
         return;
       }
       io.to(targetUser.currentID).emit("callUser", { signal, name, from, userToCall });
-      socket.emit("UserIsOnline", "Wait for response...");
+      connectedUsers.set(from, { ...currentUser, busy: true });
     } else {
       socket.emit("UserNotOnline", "User is not online");
+    }
+  });
+  socket.on("denyCall", ({ from, name, to }) => {
+    let targetUser = connectedUsers.get(to);
+    let currentUser = connectedUsers.get(from);
+    if (targetUser && currentUser) {
+      socket.to(targetUser?.currentID).emit("callDenied", { from, name, to });
+      connectedUsers.set(from, { ...targetUser, busy: false });
     }
   });
 
